@@ -419,9 +419,3 @@ This project makes use of and builds upon work from:
 Thanks to the developers and communities that made these tools and hardware projects possible.
 
 ---
-
-## License
-
-Add the license used by this repository here.
-
-If third-party binaries or modified source code are distributed with the project, preserve their original licenses and copyright notices.
