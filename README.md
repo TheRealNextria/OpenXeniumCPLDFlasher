@@ -6,6 +6,7 @@ The application supports:
 
 - **xFlasher 360**
 - **Xilinx Platform Cable USB**
+- **Digilent HS2 / DLC9LP FT232H clone**
 
 It provides device detection, CPLD programming, erase support, progress indication, and logging.
 
@@ -15,13 +16,15 @@ It provides device detection, CPLD programming, erase support, progress indicati
 - Detects the OpenXenium **XC9572XL**
 - Supports **xFlasher 360**
 - Supports **Xilinx Platform Cable USB**
+- Supports **Digilent HS2 / DLC9LP FT232H clone**
 - Automatic Xilinx USB cable firmware initialization
 - Programs `.SVF` files using xFlasher
-- Programs `.JED` files using Xilinx Platform Cable USB
-- CPLD erase function for Xilinx Platform Cable USB
+- Programs `.JED` files using Xilinx Platform Cable USB or Digilent HS2 / DLC9LP clone
+- CPLD erase function for both openFPGALoader backends
 - Automatic USB device selection
 - Programming progress and detailed log output
-- Tested stable Xilinx JTAG frequency: **750 kHz**
+- Tested stable Xilinx Platform Cable USB JTAG frequency: **750 kHz**
+- Tested stable Digilent HS2 / DLC9LP requested JTAG frequency: **740 kHz** (~731.71 kHz actual)
 
 ## Supported CPLD
 
@@ -128,6 +131,50 @@ Firmware format:
 
 ---
 
+### Digilent HS2 / DLC9LP FT232H clone
+
+The tested DLC9LP-compatible programmer uses an **FTDI FT232H** and is compatible with the `digilent_hs2` openFPGALoader backend.
+
+Tested USB identification:
+
+```text
+VID:PID       0403:6014
+Manufacturer  Digilent
+Product       Digilent USB Device
+```
+
+Detection:
+
+```text
+openFPGALoader.exe -c digilent_hs2 --freq 740000 --detect -v
+```
+
+Programming:
+
+```text
+openFPGALoader.exe -c digilent_hs2 --freq 740000 "openxenium.jed" -v
+```
+
+Erase only:
+
+```text
+openFPGALoader.exe -c digilent_hs2 --freq 740000 --erase-only -v
+```
+
+The requested JTAG frequency is **740 kHz**. On the tested FT232H programmer, openFPGALoader reports an actual frequency of approximately:
+
+```text
+731.71 kHz
+```
+
+Firmware format:
+
+```text
+.JED
+```
+
+---
+
 ## Fast XC9572XL Programming
 
 The Xilinx backend uses a modified XC9500XL programming implementation in openFPGALoader.
@@ -206,20 +253,79 @@ The application targets:
 Windows x64
 ```
 
-### USB driver
+### USB Drivers
 
-The Xilinx Platform Cable USB should use **WinUSB**.
+The required USB driver depends on the programmer being used.
+
+#### xFlasher 360
+
+The xFlasher 360 backend uses `xsvftool` with the **FTDI D2XX** driver.
+
+The xFlasher should therefore use the normal FTDI driver and should appear as an FTDI device in Windows.
+
+Do **not** replace the xFlasher driver with WinUSB when using the included `xsvftool` backend.
+
+#### Xilinx Platform Cable USB
+
+The original Xilinx Platform Cable USB should use **WinUSB**.
 
 WinUSB can be installed using a utility such as **Zadig**.
 
-Install WinUSB for both:
+Install WinUSB for both possible USB device states:
 
 ```text
-03FD:000F
-03FD:0008
+03FD:000F    Xilinx Platform Cable USB Firmware Loader
+03FD:0008    Xilinx Platform Cable USB
 ```
 
-This avoids the old Xilinx/Jungo `windrvr6` driver and allows modern Windows security features such as **Memory Integrity** and the Microsoft vulnerable-driver blocklist to remain enabled.
+The cable normally appears as `03FD:000F` immediately after being connected. The application automatically loads the required firmware and changes it to `03FD:0008`.
+
+Using WinUSB avoids the old Xilinx/Jungo `windrvr6` driver and allows modern Windows security features such as **Memory Integrity** and the Microsoft vulnerable-driver blocklist to remain enabled.
+
+#### Digilent HS2 / DLC9LP FT232H clone
+
+The tested DLC9LP-compatible programmer uses an **FTDI FT232H** and identifies itself as:
+
+```text
+VID:PID       0403:6014
+Manufacturer  Digilent
+Product       Digilent USB Device
+```
+
+Windows may initially install the normal FTDI driver and show the programmer as:
+
+```text
+USB Serial Converter
+```
+
+For use with `openFPGALoader`, this device must use the **WinUSB** driver instead.
+
+Use **Zadig**:
+
+1. Connect the programmer.
+2. Start Zadig as Administrator.
+3. Select **Options → List All Devices**.
+4. Select the device with `0403:6014`.
+5. Verify that it is the Digilent/DLC9LP programmer.
+6. Select **WinUSB** as the replacement driver.
+7. Click **Replace Driver**.
+
+After installing WinUSB, the device can be checked with:
+
+```text
+openFPGALoader.exe --scan-usb
+```
+
+A correctly configured tested programmer appears similar to:
+
+```text
+vid:pid       probe_type manufacturer product
+0403:6014     ft232H     Digilent     Digilent USB Device
+```
+
+The application accesses this programmer using the `digilent_hs2` openFPGALoader backend.
+
+**Important:** replacing the FTDI driver with WinUSB means software that specifically requires the FTDI D2XX driver may no longer be able to access this device until the FTDI driver is restored.
 
 ---
 
@@ -270,6 +376,18 @@ xusb_xlp.hex
 
 plus the runtime DLLs required by openFPGALoader and fxload.
 
+### Digilent HS2 / DLC9LP clone files
+
+Required:
+
+```text
+openFPGALoader.exe
+```
+
+plus the runtime DLLs required by openFPGALoader.
+
+The Xilinx FX2 firmware files are not required for this FT232H-based programmer.
+
 ---
 
 ## Xilinx Firmware Files
@@ -311,6 +429,19 @@ Users are responsible for obtaining these files from their own legally installed
 4. Select **Xilinx Platform Cable USB**.
 5. Click **Detect**.
 6. If necessary, the software initializes the USB cable automatically.
+7. Select the OpenXenium `.JED` file.
+8. Click **Program JED**.
+
+To erase the CPLD without programming it, click **Erase CPLD**.
+
+### Digilent HS2 / DLC9LP FT232H clone
+
+1. Install **WinUSB** for the `0403:6014` FT232H device using Zadig.
+2. Connect the programmer.
+3. Connect JTAG to the OpenXenium.
+4. Start OpenXenium CPLD Flasher.
+5. Select **Digilent HS2 / DLC9LP clone**.
+6. Click **Detect**.
 7. Select the OpenXenium `.JED` file.
 8. Click **Program JED**.
 

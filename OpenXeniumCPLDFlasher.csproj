@@ -8,7 +8,7 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-	<ApplicationIcon>Assets\OpenXenium_CPLD_Flasher.ico</ApplicationIcon>
+	<ApplicationIcon>Assets\OpenXenium_CPLD_Flasher.ico</ApplicationIcon>																  
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <AssemblyName>OpenXenium CPLD Flasher</AssemblyName>
     <RootNamespace>OpenXeniumCPLDFlasher</RootNamespace>

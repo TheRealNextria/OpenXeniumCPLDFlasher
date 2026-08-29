@@ -6,26 +6,29 @@ public partial class MainForm : Form
 {
     private readonly XsvfToolBackend _xflasherBackend;
     private readonly XilinxPlatformCableBackend _xilinxBackend;
+    private readonly DigilentHs2Backend _digilentBackend;
     private CancellationTokenSource? _cts;
     private bool _cpldDetected;
 
     private bool XilinxSelected => cboProgrammer.SelectedIndex == 1;
+    private bool DigilentSelected => cboProgrammer.SelectedIndex == 2;
+    private bool JedBackendSelected => XilinxSelected || DigilentSelected;
 
     public MainForm()
+{
+    InitializeComponent();
+
+    try
     {
-        InitializeComponent();
-		try
-    {
-		this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
     }
-		catch
+    catch
     {
         // Ignore if icon is unavailable.
     }
 
-		this.ShowIcon = true;
-		this.ShowInTaskbar = true;
-
+    this.ShowIcon = true;
+    this.ShowInTaskbar = true;
 
         string tools = Path.Combine(AppContext.BaseDirectory, "Tools");
 
@@ -38,9 +41,12 @@ public partial class MainForm : Form
             Path.Combine(tools, "xusb_xlp_bootstrap_extracted.hex"),
             Path.Combine(tools, "xusb_xlp.hex"));
 
+        _digilentBackend = new DigilentHs2Backend(
+            Path.Combine(tools, "openFPGALoader.exe"));
+
         cboProgrammer.SelectedIndex = 0;
 
-        AppendLog("OpenXenium CPLD Flasher v0.5.2 started.");
+        AppendLog("OpenXenium CPLD Flasher v0.5.3 started.");
         AppendLog("Target: Xilinx XC9572XL-10VQG64C");
         UpdateBackendUi();
         UpdateButtons();
@@ -85,6 +91,29 @@ public partial class MainForm : Form
                     lblProgrammerStatus.Text = "Not detected";
                     lblProgrammerStatus.ForeColor = Color.FromArgb(196, 43, 28);
                     AppendLog("No supported XC9572XL detected with Xilinx Platform Cable USB.");
+                }
+            }
+            else if (DigilentSelected)
+            {
+                AppendLog("Detecting Digilent HS2 / DLC9LP clone / CPLD...");
+                DigilentDetectResult result =
+                    await _digilentBackend.DetectAsync(AppendLogThreadSafe, _cts.Token);
+
+                if (result.SupportedDevice)
+                {
+                    _cpldDetected = true;
+                    lblProgrammerStatus.Text = "Digilent HS2 / DLC9LP clone: Connected";
+                    lblProgrammerStatus.ForeColor = Color.FromArgb(16, 124, 16);
+                    lblIdCode.Text = result.IdCode ?? "-";
+                    lblRevision.Text = "-";
+                    AppendLog($"Detected: Xilinx XC9572XL, IDCODE {result.IdCode}");
+                    AppendLog("JTAG frequency: 740 kHz requested (~731.71 kHz actual)");
+                }
+                else
+                {
+                    lblProgrammerStatus.Text = "Not detected";
+                    lblProgrammerStatus.ForeColor = Color.FromArgb(196, 43, 28);
+                    AppendLog("No supported XC9572XL detected with Digilent HS2 / DLC9LP clone.");
                 }
             }
             else
@@ -165,6 +194,18 @@ public partial class MainForm : Form
             openFileDialogSvf.Title = "Select OpenXenium JED file";
             AppendLog("Programmer selected: Xilinx Platform Cable USB (750 kHz).");
         }
+        else if (DigilentSelected)
+        {
+            bool ready = _digilentBackend.ToolExists();
+            lblBackendStatus.Text = ready ? "openFPGALoader.exe ready" : "openFPGALoader.exe missing";
+            lblBackendStatus.ForeColor = ready ? Color.FromArgb(16, 124, 16) : Color.FromArgb(196, 43, 28);
+            grpSvf.Text = "JED firmware";
+            btnProgram.Text = "Program JED";
+            btnErase.Visible = true;
+            openFileDialogSvf.Filter = "JED files (*.jed)|*.jed|All files (*.*)|*.*";
+            openFileDialogSvf.Title = "Select OpenXenium JED file";
+            AppendLog("Programmer selected: Digilent HS2 / DLC9LP clone (740 kHz).");
+        }
         else
         {
             bool ready = _xflasherBackend.ToolExists();
@@ -185,7 +226,7 @@ public partial class MainForm : Form
             return;
 
         txtSvfPath.Text = openFileDialogSvf.FileName;
-        AppendLog($"{(XilinxSelected ? "JED" : "SVF")} selected: {Path.GetFileName(openFileDialogSvf.FileName)}");
+        AppendLog($"{(JedBackendSelected ? "JED" : "SVF")} selected: {Path.GetFileName(openFileDialogSvf.FileName)}");
         UpdateButtons();
     }
 
@@ -196,7 +237,7 @@ public partial class MainForm : Form
         if (!File.Exists(firmware))
         {
             MessageBox.Show(this,
-                $"Select a valid {(XilinxSelected ? "JED" : "SVF")} file first.",
+                $"Select a valid {(JedBackendSelected ? "JED" : "SVF")} file first.",
                 "Firmware file", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -221,6 +262,12 @@ public partial class MainForm : Form
             {
                 AppendLog("Backend: Xilinx Platform Cable USB @ 750 kHz");
                 result = await _xilinxBackend.ProgramAsync(
+                    firmware, AppendLogThreadSafe, SetProgressThreadSafe, _cts.Token);
+            }
+            else if (DigilentSelected)
+            {
+                AppendLog("Backend: Digilent HS2 / DLC9LP clone @ 740 kHz");
+                result = await _digilentBackend.ProgramAsync(
                     firmware, AppendLogThreadSafe, SetProgressThreadSafe, _cts.Token);
             }
             else
@@ -264,7 +311,7 @@ public partial class MainForm : Form
 
     private async void btnErase_Click(object? sender, EventArgs e)
     {
-        if (!XilinxSelected || !_cpldDetected)
+        if (!JedBackendSelected || !_cpldDetected)
             return;
 
         if (MessageBox.Show(this,
@@ -279,8 +326,9 @@ public partial class MainForm : Form
 
         try
         {
-            RunResult result = await _xilinxBackend.EraseAsync(
-                AppendLogThreadSafe, _cts.Token);
+            RunResult result = XilinxSelected
+                ? await _xilinxBackend.EraseAsync(AppendLogThreadSafe, _cts.Token)
+                : await _digilentBackend.EraseAsync(AppendLogThreadSafe, _cts.Token);
 
             if (result.ExitCode == 0)
             {
@@ -320,26 +368,30 @@ public partial class MainForm : Form
         _cts?.Cancel();
         _xflasherBackend.Cancel();
         _xilinxBackend.Cancel();
+        _digilentBackend.Cancel();
     }
 
     private void btnClearLog_Click(object? sender, EventArgs e) => txtLog.Clear();
 
     private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
     {
-        if (_xflasherBackend.IsRunning || _xilinxBackend.IsRunning)
+        if (_xflasherBackend.IsRunning || _xilinxBackend.IsRunning || _digilentBackend.IsRunning)
         {
             _cts?.Cancel();
             _xflasherBackend.Cancel();
             _xilinxBackend.Cancel();
+            _digilentBackend.Cancel();
         }
     }
 
     private bool SelectedBackendReady() =>
-        XilinxSelected ? _xilinxBackend.ToolExists() : _xflasherBackend.ToolExists();
+        XilinxSelected ? _xilinxBackend.ToolExists() :
+        DigilentSelected ? _digilentBackend.ToolExists() :
+        _xflasherBackend.ToolExists();
 
     private void ShowMissingBackend()
     {
-        if (XilinxSelected)
+        if (JedBackendSelected)
         {
             MessageBox.Show(this,
                 "Tools\\openFPGALoader.exe was not found.",
@@ -365,7 +417,7 @@ public partial class MainForm : Form
     private void UpdateButtons(bool? busyOverride = null)
     {
         bool busy = busyOverride ??
-            (_xflasherBackend.IsRunning || _xilinxBackend.IsRunning);
+            (_xflasherBackend.IsRunning || _xilinxBackend.IsRunning || _digilentBackend.IsRunning);
 
         btnProgram.Enabled =
             !busy &&
@@ -375,9 +427,9 @@ public partial class MainForm : Form
 
         btnErase.Enabled =
             !busy &&
-            XilinxSelected &&
+            JedBackendSelected &&
             _cpldDetected &&
-            _xilinxBackend.ToolExists();
+            SelectedBackendReady();
 
         if (!busy)
             btnCancel.Enabled = false;

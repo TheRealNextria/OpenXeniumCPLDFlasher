@@ -103,7 +103,8 @@ partial class MainForm
         cboProgrammer.Items.AddRange(new object[]
         {
             "xFlasher 360",
-            "Xilinx Platform Cable USB"
+            "Xilinx Platform Cable USB",
+            "Digilent HS2 / DLC9LP clone"
         });
         cboProgrammer.Location = new Point(140, 24);
         cboProgrammer.Name = "cboProgrammer";
@@ -301,7 +302,7 @@ partial class MainForm
         MinimumSize = new Size(800, 700);
         Name = "MainForm";
         StartPosition = FormStartPosition.CenterScreen;
-        Text = "OpenXenium CPLD Flasher v0.5.2";
+        Text = "OpenXenium CPLD Flasher v0.5.3";
         FormClosing += MainForm_FormClosing;
         ResumeLayout(false);
     }
